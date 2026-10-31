@@ -37,8 +37,9 @@ the implementation.
   accelerator or an L1 cache.
 
 What the module is **not**: it does not configure the MPU (the attributes of the memory regions) and it does not change
-the flash latency or the prefetch (RCC module). It does not do the maintenance of the cache by address (clean /
-invalidate of a range for DMA buffers of the Cortex-M7) in the first version.
+the flash latency or the prefetch (RCC module). The maintenance of a data cache by address (clean / invalidate of a
+range, for DMA buffers) is offered where the family has the hardware for it (STM32H5 DCACHE1); other families may not
+have it in the first version.
 
 ---
 
@@ -71,6 +72,11 @@ Rules:
    event driven, `Cache_Task()` is not needed for the correctness (see below).
 5. `Cache_Set_Invalidate` invalidates the content of the cache (it waits for the end of the invalidation of the
    hardware). It can be called with the cache enabled, disabled or suspended.
+6. `Cache_Set_CleanRange` / `Cache_Set_InvalidateRange` / `Cache_Set_CleanInvalidateRange` clean and/or invalidate a
+   range of addresses of a data cache (where the family has the hardware for it), for DMA buffers that the CPU writes
+   or reads directly. The start address and the size are rejected (module error, no register touched) if they are not
+   aligned to the cache line of the family. A cache without range maintenance (or the instruction cache) returns an
+   error.
 
 ---
 
@@ -99,7 +105,7 @@ parameters (for example a cache the device does not have, or the remap regions).
 | Module management | `Cache_Get_ModuleVersion`, `Cache_Init`, `Cache_Deinit`, `Cache_Task`, `Cache_Get_DefaultConfig` |
 | Requested state | `Cache_Set_Active`, `Cache_Set_Inactive`, `Cache_Get_State` |
 | Temporary bypass | `Cache_Set_Suspend`, `Cache_Set_Resume` |
-| Maintenance | `Cache_Set_Invalidate` |
+| Maintenance | `Cache_Set_Invalidate`, `Cache_Set_CleanRange`, `Cache_Set_InvalidateRange`, `Cache_Set_CleanInvalidateRange` |
 | Monitors | `Cache_Get_Monitor`, `Cache_Set_MonitorReset` |
 
 ```c
@@ -118,6 +124,10 @@ cache_RequestState_t  Cache_Set_Suspend        ( cache_CacheId_t cacheId );
 cache_RequestState_t  Cache_Set_Resume         ( cache_CacheId_t cacheId );
 
 cache_RequestState_t  Cache_Set_Invalidate     ( cache_CacheId_t cacheId );
+
+cache_RequestState_t  Cache_Set_CleanRange           ( cache_CacheId_t cacheId, uint32_t address, uint32_t size );
+cache_RequestState_t  Cache_Set_InvalidateRange      ( cache_CacheId_t cacheId, uint32_t address, uint32_t size );
+cache_RequestState_t  Cache_Set_CleanInvalidateRange ( cache_CacheId_t cacheId, uint32_t address, uint32_t size );
 
 cache_RequestState_t  Cache_Get_Monitor        ( cache_CacheId_t cacheId, cache_Monitor_t * const cacheMonitor );
 cache_RequestState_t  Cache_Set_MonitorReset   ( cache_CacheId_t cacheId );
@@ -187,8 +197,9 @@ enabled the caches); `Cache_Set_Active` / `Cache_Set_Inactive` then manage it.
   the cache off (slower code, no functional failure) - the counter is visible in `Cache_Get_State`.
 - **MPU.** The module does not set the memory attributes. A region that has to be accessed by a pointer without the
   bracket needs a non-cacheable MPU region.
-- **Not part of the first version:** the maintenance by address, the remap regions of the ICACHE, the interrupts and the
-  error callbacks of the cache, TrustZone aliases of the registers.
+- **Not part of the first version:** the remap regions of the ICACHE, the interrupts and the error callbacks of the
+  cache, TrustZone aliases of the registers. The maintenance by address of a data cache is offered where the family
+  has the hardware for it (STM32H5 DCACHE1).
 
 ---
 

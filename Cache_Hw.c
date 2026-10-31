@@ -27,6 +27,7 @@ static cache_RequestState_t Cache_Hw_Invalidate_Icache      ( void );
 static cache_RequestState_t Cache_Hw_Set_DcacheEnabled      ( cache_FlagState_t enabled );
 static cache_RequestState_t Cache_Hw_Invalidate_Dcache      ( void );
 static cache_FlagState_t    Cache_Hw_Get_DcacheBusy         ( void );
+static cache_RequestState_t Cache_Hw_Set_DcacheCommandRange ( uint32_t command, uint32_t address, uint32_t size );
 #endif /* DCACHE1 */
 
 /* ======================== EXPORTED FUNCTIONS ============================== */
@@ -203,6 +204,108 @@ cache_RequestState_t Cache_Hw_Invalidate( cache_CacheId_t cacheId )
     {
         retState = CACHE_REQUEST_ERROR;
     }
+
+    return (retState);
+}
+
+
+/**
+ * \brief Cleans a range of addresses of the data cache (write-back of the dirty lines) and waits for the end.
+ *
+ * Only the data cache has range maintenance, the instruction cache has none (the IP has no such command for it).
+ *
+ * \param cacheId: Cache (it exists)
+ * \param address: Start address of the range (16-byte aligned)
+ * \param size: Size of the range in bytes (16-byte aligned, not 0)
+ *
+ * \return \ref CACHE_REQUEST_OK if the cleaning is finished, otherwise \ref CACHE_REQUEST_ERROR
+ */
+cache_RequestState_t Cache_Hw_Set_CleanRange( cache_CacheId_t cacheId, uint32_t address, uint32_t size )
+{
+    cache_RequestState_t retState = CACHE_REQUEST_ERROR;
+
+#if defined(DCACHE1)
+    if ( CACHE_DATA == cacheId )
+    {
+        retState = Cache_Hw_Set_DcacheCommandRange( LL_DCACHE_COMMAND_CLEAN_BY_ADDR, address, size );
+    }
+    else
+    {
+        retState = CACHE_REQUEST_ERROR;
+    }
+#else
+    (void)cacheId;
+    (void)address;
+    (void)size;
+#endif /* DCACHE1 */
+
+    return (retState);
+}
+
+
+/**
+ * \brief Invalidates a range of addresses of the data cache and waits for the end.
+ *
+ * Only the data cache has range maintenance, the instruction cache has none (the IP has no such command for it).
+ *
+ * \param cacheId: Cache (it exists)
+ * \param address: Start address of the range (16-byte aligned)
+ * \param size: Size of the range in bytes (16-byte aligned, not 0)
+ *
+ * \return \ref CACHE_REQUEST_OK if the invalidation is finished, otherwise \ref CACHE_REQUEST_ERROR
+ */
+cache_RequestState_t Cache_Hw_Set_InvalidateRange( cache_CacheId_t cacheId, uint32_t address, uint32_t size )
+{
+    cache_RequestState_t retState = CACHE_REQUEST_ERROR;
+
+#if defined(DCACHE1)
+    if ( CACHE_DATA == cacheId )
+    {
+        retState = Cache_Hw_Set_DcacheCommandRange( LL_DCACHE_COMMAND_INVALIDATE_BY_ADDR, address, size );
+    }
+    else
+    {
+        retState = CACHE_REQUEST_ERROR;
+    }
+#else
+    (void)cacheId;
+    (void)address;
+    (void)size;
+#endif /* DCACHE1 */
+
+    return (retState);
+}
+
+
+/**
+ * \brief Cleans and invalidates a range of addresses of the data cache and waits for the end.
+ *
+ * Only the data cache has range maintenance, the instruction cache has none (the IP has no such command for it).
+ *
+ * \param cacheId: Cache (it exists)
+ * \param address: Start address of the range (16-byte aligned)
+ * \param size: Size of the range in bytes (16-byte aligned, not 0)
+ *
+ * \return \ref CACHE_REQUEST_OK if the command is finished, otherwise \ref CACHE_REQUEST_ERROR
+ */
+cache_RequestState_t Cache_Hw_Set_CleanInvalidateRange( cache_CacheId_t cacheId, uint32_t address, uint32_t size )
+{
+    cache_RequestState_t retState = CACHE_REQUEST_ERROR;
+
+#if defined(DCACHE1)
+    if ( CACHE_DATA == cacheId )
+    {
+        retState = Cache_Hw_Set_DcacheCommandRange( LL_DCACHE_COMMAND_CLEAN_INVALIDATE_BY_ADDR, address, size );
+    }
+    else
+    {
+        retState = CACHE_REQUEST_ERROR;
+    }
+#else
+    (void)cacheId;
+    (void)address;
+    (void)size;
+#endif /* DCACHE1 */
 
     return (retState);
 }
@@ -535,6 +638,81 @@ static cache_RequestState_t Cache_Hw_Invalidate_Dcache( void )
         {
             LL_DCACHE_ClearFlag_BSYEND( DCACHE1 );
             retState = CACHE_REQUEST_OK;
+        }
+    }
+
+    return (retState);
+}
+
+
+/**
+ * \brief Starts a maintenance command (clean, invalidate or clean and invalidate) on a range of addresses of the
+ *        data cache and waits for the end.
+ *
+ * The command compares the address of every cache line (its TAG address) against the programmed range, both the
+ * start and the end address are inclusive bounds of this comparison. The end address register therefore holds the
+ * address of the last cache line included in the range (not the last byte of it), so it is 16-byte aligned the
+ * same as the start address: \c address + \c size - \ref CACHE_HW_DCACHE_LINE_SIZE.
+ *
+ * \param command: One of \c LL_DCACHE_COMMAND_CLEAN_BY_ADDR, \c LL_DCACHE_COMMAND_INVALIDATE_BY_ADDR or
+ *                 \c LL_DCACHE_COMMAND_CLEAN_INVALIDATE_BY_ADDR
+ * \param address: Start address of the range (16-byte aligned)
+ * \param size: Size of the range in bytes (16-byte aligned, not 0)
+ *
+ * \return \ref CACHE_REQUEST_OK if the command is finished, otherwise \ref CACHE_REQUEST_ERROR (bad alignment,
+ *         the data cache is busy, or a timeout of the wait for the end of the command)
+ */
+static cache_RequestState_t Cache_Hw_Set_DcacheCommandRange( uint32_t command, uint32_t address, uint32_t size )
+{
+    cache_RequestState_t retState = CACHE_REQUEST_ERROR;
+    cache_FlagState_t    busyState;
+    uint32_t             endAddress;
+    uint32_t             cmdEnd;
+    cache_TimeoutCnt_t   timeoutCnt;
+
+    if ( ( 0u == size                                  ) ||
+         ( 0u != ( address % CACHE_HW_DCACHE_LINE_SIZE ) ) ||
+         ( 0u != ( size    % CACHE_HW_DCACHE_LINE_SIZE ) )    )
+    {
+        retState = CACHE_REQUEST_ERROR;
+    }
+    else
+    {
+        busyState = Cache_Hw_Get_DcacheBusy();
+
+        if ( CACHE_FLAG_ACTIVE == busyState )
+        {
+            retState = CACHE_REQUEST_ERROR;
+        }
+        else
+        {
+            endAddress = address + size - CACHE_HW_DCACHE_LINE_SIZE;
+
+            LL_DCACHE_ClearFlag_CMDEND( DCACHE1 );
+            LL_DCACHE_SetStartAddress( DCACHE1, address );
+            LL_DCACHE_SetEndAddress( DCACHE1, endAddress );
+            LL_DCACHE_SetCommand( DCACHE1, command );
+            LL_DCACHE_StartCommand( DCACHE1 );
+
+            cmdEnd = LL_DCACHE_IsActiveFlag_CMDEND( DCACHE1 );
+
+            for ( timeoutCnt = CACHE_HW_TIMEOUT_CNT;
+                  ( 0u == cmdEnd    ) &&
+                  ( 0u < timeoutCnt )    ;
+                  timeoutCnt-- )
+            {
+                cmdEnd = LL_DCACHE_IsActiveFlag_CMDEND( DCACHE1 );
+            }
+
+            if ( 0u == cmdEnd )
+            {
+                retState = CACHE_REQUEST_ERROR;
+            }
+            else
+            {
+                LL_DCACHE_ClearFlag_CMDEND( DCACHE1 );
+                retState = CACHE_REQUEST_OK;
+            }
         }
     }
 

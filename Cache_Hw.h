@@ -23,6 +23,9 @@ extern "C" {
 /** Count of the iterations of the busy-wait loops (disable and invalidation of a cache) */
 #define CACHE_HW_TIMEOUT_CNT                ( 1000000u )
 
+/** Line size of the data cache for the address range maintenance commands (bytes) */
+#define CACHE_HW_DCACHE_LINE_SIZE            ( 16u )
+
 /* ============================= TYPEDEFS =================================== */
 
 /** Type representing iteration count of busy-wait loops */
@@ -39,6 +42,10 @@ cache_Ways_t            Cache_Hw_Get_Ways           ( cache_CacheId_t cacheId );
 void                    Cache_Hw_Set_Ways           ( cache_CacheId_t cacheId, cache_Ways_t ways );
 
 cache_RequestState_t    Cache_Hw_Invalidate         ( cache_CacheId_t cacheId );
+
+cache_RequestState_t    Cache_Hw_Set_CleanRange           ( cache_CacheId_t cacheId, uint32_t address, uint32_t size );
+cache_RequestState_t    Cache_Hw_Set_InvalidateRange      ( cache_CacheId_t cacheId, uint32_t address, uint32_t size );
+cache_RequestState_t    Cache_Hw_Set_CleanInvalidateRange ( cache_CacheId_t cacheId, uint32_t address, uint32_t size );
 
 cache_FlagState_t       Cache_Hw_Get_MonitorActive  ( cache_CacheId_t cacheId );
 void                    Cache_Hw_Set_MonitorActive  ( cache_CacheId_t cacheId, cache_FlagState_t active );

@@ -25,6 +25,9 @@
 /* ======================= FORWARD DECLARATIONS ============================= */
 
 static void Ut_Cache_Preset_Icache  ( uint32_t enabled, uint32_t ways2 );
+#if defined(DCACHE1)
+static void UtCache_HwModel_CommandEnd ( void );
+#endif /* DCACHE1 */
 
 /* ============================ TEST FIXTURE ================================ */
 
@@ -494,6 +497,137 @@ void Ut_Cache_SetInvalidate_DataCache_InvalidationRequestedOrAbsent( void )
 #endif
 }
 
+/* =========================== RANGE MAINTENANCE ============================= */
+
+/* STARTCMD is a pulse that the hardware would clear itself (RegMem is plain memory, it stays set); a HW model
+   (\ref UtCache_HwModel_CommandEnd) sets CMDENDF as soon as STARTCMD is seen, as the real DCACHE1 would do for a
+   short range. The end address register is checked for the inclusive last-line semantics (RM0481 9.4.8): it holds
+   the address of the last cache line included in the range, not the last byte of it. */
+
+#define UT_CACHE_RANGE_ADDRESS              ( 0x24000000u )
+#define UT_CACHE_RANGE_SIZE                 ( 0x40u )                              /* 4 lines of 16 bytes */
+#define UT_CACHE_RANGE_UNALIGN_OFFSET       ( 0x04u )                              /* not a multiple of 16 */
+
+/** Clean range selects the clean command and the inclusive last-line end address, or the data cache is absent. */
+void Ut_Cache_SetCleanRange_DataCache_CommandRequestedOrAbsent( void )
+{
+#if defined(DCACHE1)
+    TEST_ASSERT_EQUAL( REGMEM_REQUEST_OK, RegMem_Set_ModelActive( UtCache_HwModel_CommandEnd ) );
+
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_OK,
+                        Cache_Set_CleanRange( CACHE_DATA, UT_CACHE_RANGE_ADDRESS, UT_CACHE_RANGE_SIZE ) );
+
+    TEST_ASSERT_EQUAL_UINT32( UT_CACHE_RANGE_ADDRESS, DCACHE1->CMDRSADDRR );
+    TEST_ASSERT_EQUAL_UINT32( UT_CACHE_RANGE_ADDRESS + UT_CACHE_RANGE_SIZE - CACHE_HW_DCACHE_LINE_SIZE,
+                               DCACHE1->CMDREADDRR );
+    TEST_ASSERT_BITS( DCACHE_CR_CACHECMD, DCACHE_CR_CACHECMD_0, DCACHE1->CR );      /* clean command */
+    TEST_ASSERT_BITS_HIGH( DCACHE_CR_STARTCMD, DCACHE1->CR );
+#else
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_CleanRange( CACHE_DATA, UT_CACHE_RANGE_ADDRESS, UT_CACHE_RANGE_SIZE ) );
+#endif
+}
+
+/** Invalidate range selects the invalidate command, or the data cache is absent. */
+void Ut_Cache_SetInvalidateRange_DataCache_CommandRequestedOrAbsent( void )
+{
+#if defined(DCACHE1)
+    TEST_ASSERT_EQUAL( REGMEM_REQUEST_OK, RegMem_Set_ModelActive( UtCache_HwModel_CommandEnd ) );
+
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_OK,
+                        Cache_Set_InvalidateRange( CACHE_DATA, UT_CACHE_RANGE_ADDRESS, UT_CACHE_RANGE_SIZE ) );
+
+    TEST_ASSERT_BITS( DCACHE_CR_CACHECMD, DCACHE_CR_CACHECMD_1, DCACHE1->CR );      /* invalidate command */
+    TEST_ASSERT_BITS_HIGH( DCACHE_CR_STARTCMD, DCACHE1->CR );
+#else
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_InvalidateRange( CACHE_DATA, UT_CACHE_RANGE_ADDRESS, UT_CACHE_RANGE_SIZE ) );
+#endif
+}
+
+/** Clean and invalidate range selects both command bits, or the data cache is absent. */
+void Ut_Cache_SetCleanInvalidateRange_DataCache_CommandRequestedOrAbsent( void )
+{
+#if defined(DCACHE1)
+    TEST_ASSERT_EQUAL( REGMEM_REQUEST_OK, RegMem_Set_ModelActive( UtCache_HwModel_CommandEnd ) );
+
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_OK,
+                        Cache_Set_CleanInvalidateRange( CACHE_DATA, UT_CACHE_RANGE_ADDRESS, UT_CACHE_RANGE_SIZE ) );
+
+    TEST_ASSERT_BITS( DCACHE_CR_CACHECMD, DCACHE_CR_CACHECMD_0 | DCACHE_CR_CACHECMD_1, DCACHE1->CR );
+    TEST_ASSERT_BITS_HIGH( DCACHE_CR_STARTCMD, DCACHE1->CR );
+#else
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_CleanInvalidateRange( CACHE_DATA, UT_CACHE_RANGE_ADDRESS, UT_CACHE_RANGE_SIZE ) );
+#endif
+}
+
+/** The instruction cache has no range maintenance, the registers are left untouched. */
+void Ut_Cache_SetCleanRange_InstructionCache_ReturnError( void )
+{
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_CleanRange( CACHE_INSTRUCTION, UT_CACHE_RANGE_ADDRESS, UT_CACHE_RANGE_SIZE ) );
+    TEST_ASSERT_BITS_LOW( ICACHE_CR_CACHEINV, ICACHE->CR );                        /* no register touched */
+}
+
+/** A start address that is not 16-byte aligned is rejected before the command register is touched. */
+void Ut_Cache_SetCleanRange_UnalignedAddress_ReturnError( void )
+{
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_CleanRange( CACHE_DATA, UT_CACHE_RANGE_ADDRESS + UT_CACHE_RANGE_UNALIGN_OFFSET,
+                                               UT_CACHE_RANGE_SIZE ) );
+#if defined(DCACHE1)
+    TEST_ASSERT_BITS_LOW( DCACHE_CR_STARTCMD, DCACHE1->CR );                       /* rejected before the register */
+#endif
+}
+
+/** A size that is not a multiple of 16 bytes is rejected before the command register is touched. */
+void Ut_Cache_SetInvalidateRange_UnalignedSize_ReturnError( void )
+{
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_InvalidateRange( CACHE_DATA, UT_CACHE_RANGE_ADDRESS, UT_CACHE_RANGE_SIZE - 1u ) );
+#if defined(DCACHE1)
+    TEST_ASSERT_BITS_LOW( DCACHE_CR_STARTCMD, DCACHE1->CR );
+#endif
+}
+
+/** A zero size is rejected before the command register is touched. */
+void Ut_Cache_SetCleanInvalidateRange_ZeroSize_ReturnError( void )
+{
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_CleanInvalidateRange( CACHE_DATA, UT_CACHE_RANGE_ADDRESS, 0u ) );
+#if defined(DCACHE1)
+    TEST_ASSERT_BITS_LOW( DCACHE_CR_STARTCMD, DCACHE1->CR );
+#endif
+}
+
+/** A range command is refused while the data cache is busy with a previous command. */
+void Ut_Cache_SetCleanRange_DataCacheBusy_ReturnError( void )
+{
+#if defined(DCACHE1)
+    DCACHE1->SR = DCACHE_SR_BUSYCMDF;
+
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_CleanRange( CACHE_DATA, UT_CACHE_RANGE_ADDRESS, UT_CACHE_RANGE_SIZE ) );
+    TEST_ASSERT_BITS_LOW( DCACHE_CR_STARTCMD, DCACHE1->CR );                       /* not started while busy */
+#else
+    TEST_IGNORE_MESSAGE( "The device has no data cache" );
+#endif
+}
+
+/** The bounded wait for CMDENDF ends in an error when the command never finishes (no HW model active). */
+void Ut_Cache_SetInvalidateRange_DataCacheNoCmdEndForever_ReturnErrorTimeout( void )
+{
+#if defined(DCACHE1)
+    /* no HW model: CMDENDF never appears, the bounded wait loop times out */
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_InvalidateRange( CACHE_DATA, UT_CACHE_RANGE_ADDRESS, UT_CACHE_RANGE_SIZE ) );
+    TEST_ASSERT_BITS_HIGH( DCACHE_CR_STARTCMD, DCACHE1->CR );                      /* the command was started */
+#else
+    TEST_IGNORE_MESSAGE( "The device has no data cache" );
+#endif
+}
+
 /* ================================ MONITORS ================================ */
 
 void Ut_Cache_GetMonitor_InstructionCache_HitAndMissCounters( void )
@@ -610,3 +744,21 @@ static void Ut_Cache_Preset_Icache( uint32_t enabled, uint32_t ways2 )
         LL_ICACHE_SetMode( LL_ICACHE_1WAY );
     }
 }
+
+#if defined(DCACHE1)
+
+/** HW model of the data cache range command: sets CMDENDF as soon as STARTCMD is seen set (RegMem is plain
+    memory, STARTCMD stays set once written, so the flag is set on every evaluation after that point). */
+static void UtCache_HwModel_CommandEnd( void )
+{
+    if ( 0u != ( DCACHE1->CR & DCACHE_CR_STARTCMD ) )
+    {
+        (void)__atomic_or_fetch( &DCACHE1->SR, DCACHE_SR_CMDENDF, __ATOMIC_SEQ_CST );
+    }
+    else
+    {
+        /* no command started yet */
+    }
+}
+
+#endif /* DCACHE1 */

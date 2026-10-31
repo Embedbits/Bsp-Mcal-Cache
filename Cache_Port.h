@@ -51,6 +51,10 @@ cache_RequestState_t    Cache_Set_Resume            ( cache_CacheId_t cacheId );
 
 cache_RequestState_t    Cache_Set_Invalidate        ( cache_CacheId_t cacheId );
 
+cache_RequestState_t    Cache_Set_CleanRange              ( cache_CacheId_t cacheId, uint32_t address, uint32_t size );
+cache_RequestState_t    Cache_Set_InvalidateRange         ( cache_CacheId_t cacheId, uint32_t address, uint32_t size );
+cache_RequestState_t    Cache_Set_CleanInvalidateRange    ( cache_CacheId_t cacheId, uint32_t address, uint32_t size );
+
 /*------------------------------- Monitors -----------------------------------*/
 
 cache_RequestState_t    Cache_Get_Monitor           ( cache_CacheId_t cacheId, cache_Monitor_t * const cacheMonitor );

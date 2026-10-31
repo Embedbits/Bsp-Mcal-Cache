@@ -42,6 +42,18 @@
 /** Count of the calls of the code executed to load the instruction cache */
 #define IT_CACHE_CODE_LOOP_CNT              ( 200u )
 
+/** Size of the buffer used by the range maintenance tests (4 data cache lines) */
+#define IT_CACHE_RANGE_BUFFER_SIZE          ( 64u )
+
+/** Alignment of the buffer used by the range maintenance tests (the data cache line size) */
+#define IT_CACHE_RANGE_ALIGN_BYTES          ( 16u )
+
+/* ========================= EXPORTED VARIABLES ============================= */
+
+/** Buffer used as the address range of the maintenance commands (aligned to the data cache line) */
+static uint8_t itCache_RangeBuffer[ IT_CACHE_RANGE_BUFFER_SIZE ]
+    __attribute__(( aligned( IT_CACHE_RANGE_ALIGN_BYTES ) ));
+
 /* ======================= FORWARD DECLARATIONS ============================= */
 
 static uint32_t itCache_Get_HwEnabled   ( void );
@@ -220,6 +232,32 @@ void It_Cache_DataCache_PresentOrAbsent_ResultAccordingToTheDevice( void )
     TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR, Cache_Get_State( CACHE_DATA, &state ) );
     TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR, Cache_Set_Suspend( CACHE_DATA ) );
     TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR, Cache_Set_Invalidate( CACHE_DATA ) );
+#endif
+}
+
+
+/** The range maintenance commands run on a real buffer where the device has the data cache, the other devices
+    return an error (compile-only, not run on hardware). */
+void It_Cache_RangeMaintenance_PresentOrAbsent_ResultAccordingToTheDevice( void )
+{
+    uint32_t bufferAddress = (uint32_t)(uintptr_t)itCache_RangeBuffer;
+
+#if defined(DCACHE1)
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_OK,
+                        Cache_Set_CleanRange( CACHE_DATA, bufferAddress, IT_CACHE_RANGE_BUFFER_SIZE ) );
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_OK,
+                        Cache_Set_InvalidateRange( CACHE_DATA, bufferAddress, IT_CACHE_RANGE_BUFFER_SIZE ) );
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_OK,
+                        Cache_Set_CleanInvalidateRange( CACHE_DATA, bufferAddress, IT_CACHE_RANGE_BUFFER_SIZE ) );
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_CleanRange( CACHE_DATA, bufferAddress + 1u, IT_CACHE_RANGE_BUFFER_SIZE ) );
+#else
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_CleanRange( CACHE_DATA, bufferAddress, IT_CACHE_RANGE_BUFFER_SIZE ) );
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_InvalidateRange( CACHE_DATA, bufferAddress, IT_CACHE_RANGE_BUFFER_SIZE ) );
+    TEST_ASSERT_EQUAL( CACHE_REQUEST_ERROR,
+                        Cache_Set_CleanInvalidateRange( CACHE_DATA, bufferAddress, IT_CACHE_RANGE_BUFFER_SIZE ) );
 #endif
 }
 

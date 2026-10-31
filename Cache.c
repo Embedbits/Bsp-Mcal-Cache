@@ -423,6 +423,99 @@ cache_RequestState_t Cache_Set_Invalidate( cache_CacheId_t cacheId )
 
 
 /**
+ * \brief Cleans a range of addresses of the data cache (write-back of the dirty lines) and waits for the end.
+ *
+ * Only the data cache has range maintenance (the instruction cache has none, the IP has no such command for it).
+ *
+ * \param cacheId: Cache
+ * \param address: Start address of the range (16-byte aligned)
+ * \param size: Size of the range in bytes (16-byte aligned, not 0)
+ *
+ * \return State of request execution. Returns \ref CACHE_REQUEST_OK if request was
+ *         success, otherwise returns \ref CACHE_REQUEST_ERROR (no such cache, bad alignment, busy or timeout).
+ */
+cache_RequestState_t Cache_Set_CleanRange( cache_CacheId_t cacheId, uint32_t address, uint32_t size )
+{
+    cache_RequestState_t retState = CACHE_REQUEST_ERROR;
+
+    retState = Cache_Check_CacheId( cacheId );
+
+    if ( CACHE_REQUEST_OK == retState )
+    {
+        retState = Cache_Hw_Set_CleanRange( cacheId, address, size );
+    }
+    else
+    {
+        /* No action required, retState already holds the error */
+    }
+
+    return (retState);
+}
+
+
+/**
+ * \brief Invalidates a range of addresses of the data cache and waits for the end.
+ *
+ * Only the data cache has range maintenance (the instruction cache has none, the IP has no such command for it).
+ *
+ * \param cacheId: Cache
+ * \param address: Start address of the range (16-byte aligned)
+ * \param size: Size of the range in bytes (16-byte aligned, not 0)
+ *
+ * \return State of request execution. Returns \ref CACHE_REQUEST_OK if request was
+ *         success, otherwise returns \ref CACHE_REQUEST_ERROR (no such cache, bad alignment, busy or timeout).
+ */
+cache_RequestState_t Cache_Set_InvalidateRange( cache_CacheId_t cacheId, uint32_t address, uint32_t size )
+{
+    cache_RequestState_t retState = CACHE_REQUEST_ERROR;
+
+    retState = Cache_Check_CacheId( cacheId );
+
+    if ( CACHE_REQUEST_OK == retState )
+    {
+        retState = Cache_Hw_Set_InvalidateRange( cacheId, address, size );
+    }
+    else
+    {
+        /* No action required, retState already holds the error */
+    }
+
+    return (retState);
+}
+
+
+/**
+ * \brief Cleans and invalidates a range of addresses of the data cache and waits for the end.
+ *
+ * Only the data cache has range maintenance (the instruction cache has none, the IP has no such command for it).
+ *
+ * \param cacheId: Cache
+ * \param address: Start address of the range (16-byte aligned)
+ * \param size: Size of the range in bytes (16-byte aligned, not 0)
+ *
+ * \return State of request execution. Returns \ref CACHE_REQUEST_OK if request was
+ *         success, otherwise returns \ref CACHE_REQUEST_ERROR (no such cache, bad alignment, busy or timeout).
+ */
+cache_RequestState_t Cache_Set_CleanInvalidateRange( cache_CacheId_t cacheId, uint32_t address, uint32_t size )
+{
+    cache_RequestState_t retState = CACHE_REQUEST_ERROR;
+
+    retState = Cache_Check_CacheId( cacheId );
+
+    if ( CACHE_REQUEST_OK == retState )
+    {
+        retState = Cache_Hw_Set_CleanInvalidateRange( cacheId, address, size );
+    }
+    else
+    {
+        /* No action required, retState already holds the error */
+    }
+
+    return (retState);
+}
+
+
+/**
  * \brief Reads the hit and miss monitors of a cache.
  *
  * The monitors count only when they are active (the configuration). The data cache: reads and writes together.
